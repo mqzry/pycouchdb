@@ -1,5 +1,4 @@
 # auth info for DB
-import auth
 import requests
 import mimetypes
 import os
@@ -87,9 +86,3 @@ class CouchDB:
         response = requests.get(self.db_url + "_design/{0}/_view/{1}".format(design_doc, view_name),
                                 auth=(self.user, self.password))
         return response
-
-
-class Cloudant(CouchDB):
-
-    def __init__(self, user, password):
-        super().__init__('https://{}.cloudant.com/'.format(user), user, password)
