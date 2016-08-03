@@ -1,22 +1,61 @@
 # auth info for DB
-import requests
+from requests import Session
 import mimetypes
 import os
 from base64 import b64encode
 
-
-class CouchDB:
+class Database:
+class Document:
+class CouchServer:
 
     def __init__(self, url, user, password):
-        self.base_url = url
-        self.user = user
-        self.password = password
+        self.url = url
+        self.session = Session()
 
-    def set_current_db(self, db):
+    def get(self, db):
+        """Get database
+        :param db: name of database
+        :return: True if authenticated ok
+        :rtype: bool
+        """
         self.db = db
         self.db_url = self.base_url + db + '/'
 
-    def create(self, doc):
+    def login(self, user, password):
+        self.session.auth = (user, password)
+
+# Documents
+    def head(self, docid, docrev=None):
+        """Get headers for a document
+        :param docid: id of document
+        :param docrev: rev of doc that should be used in if-none-matched
+        :return: ?
+        :rtype: ?
+        """
+        response = self.session.head(self.db_url + docid,
+                                     headers={'If-None-Match': '"{}"'.format(docrev)})
+        if response.status_code == 200:
+            # Everything went ok
+        if response.status_code == 304:
+            # Not modified
+        if response.status_code == 401:
+            # Unauthorized
+        if response.status_code == 404:
+            # Not Found
+
+        response.headers['_rev'] = response.headers['ETag']
+        delete(response.headers['ETag'])
+
+    def get(self, docid, **kwargs):
+        """Get document
+        :param docid: id of document
+        :return: ?
+        :rtype: ?
+        """
+        result = self.session.get(self.db_url + str(id), params=kwargs)
+        return result.json()
+
+    def post(self, doc):
         result = requests.post(self.db_url, json=doc,
                                auth=(self.user, self.password))
         return result.json()
@@ -24,12 +63,6 @@ class CouchDB:
     def update(self, doc):
         result = requests.post(self.db_url + str(doc['_id']), json=doc,
                                auth=(self.user, self.password))
-        return result.json()
-
-    def get(self, id):
-        print(self.db_url + str(id))
-        result = requests.get(self.db_url + str(id),
-                              auth=(self.user, self.password))
         return result.json()
 
     def query(self, method, params=None):
