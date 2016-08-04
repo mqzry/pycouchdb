@@ -1,8 +1,8 @@
-# auth info for DB
-from requests import Session
 import mimetypes
 import os
+import exceptions
 from base64 import b64encode
+import requests
 
 class Database:
 class Document:
@@ -10,7 +10,8 @@ class CouchServer:
 
     def __init__(self, url, user, password):
         self.url = url
-        self.session = Session()
+        self.session = requests.Session()
+        self.session.headers['Accept'] = 'application/json'
 
     def get(self, db):
         """Get database
@@ -25,35 +26,36 @@ class CouchServer:
         self.session.auth = (user, password)
 
 # Documents
-    def head(self, docid, docrev=None):
+    def head(self, docid, docrev=None, **kwargs):
         """Get headers for a document
+
         :param docid: id of document
         :param docrev: rev of doc that should be used in if-none-matched
-        :return: ?
-        :rtype: ?
+        :return: dict with the relevant headers
         """
-        response = self.session.head(self.db_url + docid,
+        response = self.session.head(self.db_url + docid, params=kwargs,
                                      headers={'If-None-Match': '"{}"'.format(docrev)})
-        if response.status_code == 200:
-            # Everything went ok
-        if response.status_code == 304:
-            # Not modified
-        if response.status_code == 401:
-            # Unauthorized
-        if response.status_code == 404:
-            # Not Found
+        handle_codes(response)
+        content_length = int(response.headers['Content-Length'])
+        return {'_rev': response.headers['ETag'],
+                'Content-Length': content_length}
 
-        response.headers['_rev'] = response.headers['ETag']
-        delete(response.headers['ETag'])
-
-    def get(self, docid, **kwargs):
+    def get(self, docid, docrev=None, **kwargs):
         """Get document
         :param docid: id of document
-        :return: ?
-        :rtype: ?
+        :param docrev: rev of doc that should be used in if-none-matched
+        :return: the requested doc
         """
-        result = self.session.get(self.db_url + str(id), params=kwargs)
-        return result.json()
+        response = self.session.get(self.db_url + docid, params=kwargs,
+                                    headers={'If-None-Match': '"{}"'.format(docrev)})
+        handle_codes(response)
+        return response.json()
+
+    def handle_codes(response):
+        if response.status_code == requests.codes.not_modified:
+            return None
+        else:
+            response.raise_for_status()
 
     def post(self, doc):
         result = requests.post(self.db_url, json=doc,
