@@ -1,10 +1,11 @@
 import requests
+import logging
 
 def handle_codes():
-        if response.status_code == requests.codes.not_modified:
+        if r.status_code == requests.codes.not_modified:
             return None
         else:
-            response.raise_for_status()
+            r.raise_for_status()
 
 def add_forward_slash(url):
     if url.endswith('/'):
@@ -20,39 +21,62 @@ class CouchServer:
         self.session.headers['Accept'] = 'application/json'
 
     def head_db(self, db_name):
-        response = self.session.get(self.url + db_name)
-        return response.status_code == requests.codes['ok']
+        r = self.session.get(self.url + db_name)
+        return r.status_code == requests.codes.ok
 
     def get_db(self, db_name):
-        response = self.session.get(self.url + db_name)
-        if response.status_code == requests.codes['ok']:
-            return response.json()
+        r = self.session.get(self.url + db_name)
+        if r.status_code == requests.codes.ok:
+            # TODO: Return Database object
+            return r.json()
         else:
             return None
 
     def create_db(self, db_name):
-        response = self.session.put(self.url + db_name)
-        if response.status_code == requests.codes['created']:
+        r = self.session.put(self.url + db_name)
+        if r.status_code == requests.codes.created:
+            # TODO: Return Database object
             return True
-        else: # Log error message of the different status codes here
-            response.raise_for_status();
+        else:
+            info = r.json()
+            logging.info('Tried to create {0} but {1} happend because {2}'
+                         .format(db_name, info.error, info.reason))
 
-    def delete_db(self, name):
-        return self.session.delete(self.url + name)
-
-    def get(self, db):
-        """Get database
-        :param db: name of database
-        :return: True if authenticated ok
-        :rtype: bool
-        """
-        self.db = db
-        self.db_url = self.base_url + db + '/'
-        return self.session
+    def delete_db(self, db_name):
+        r = self.session.delete(self.url + db_name)
+        if r.status_code == requests.codes.ok:
+            return True
+        elif r.status_code == requests.codes.bad_request:
+            logging.info('Failed attempt to delete database {0}. The request url {1} is not valid.'.format(db_name, r.url)
+                         + 'Probably a invalid database name or forgotten document id by accident.')
+        elif r.status_code == requests.codes.not_found:
+            logging.info('Failed attempt to delete database {0}. It does not exist.'.format(db_name))
+        elif r.status_code == requests.codes.unauthorized:
+            logging.info('Failed attempt to delete database {0}. CouchDB Server Administrator privileges required.'.format(db_name))
+        return False
 
     def login(self, user, password):
-        self.session.auth = (user, password)
+        ''' Login to the server. Save the cookie token in the session.
+        The redirect parameter called next is not supported.'''
+
+        payload = {'name': user, 'password': password}
+        r = self.session.post(self.url + '_session', json=payload)
+        if r.status_code == requests.codes.ok:
+            self.user = r.json().name
+            self.user_roles = r.json().roles
+            return True
+        elif r.status_code == requests.codes.unauthorized:
+            logging.info('Failed attempt to login user {0}. Username or password were not recognized.'.format(user))
+            return False
+
 
     def logout():
-        self.session.auth = None;
-        # TODO: Improve 
+        if self.user is None:
+            return
+        else:
+            r = self.session.delete(self.url + '_session', json=payload)
+            if r.status_code == requests.codes.ok:
+                self.user = None
+                self.user_roles = None
+            elif r.status_code == requests.codes.unauthorized:
+                logging.info('Failed attempt to logout user {0}. User wasn’t authenticated.'.format(self.user))
