@@ -1,29 +1,27 @@
 import requests
 import logging
+from helpers import ensure_trailing_forward_slash
 
-def handle_codes():
-        if r.status_code == requests.codes.not_modified:
-            return None
-        else:
-            r.raise_for_status()
-
-def ensure_trailing_forward_slash(url):
-    if url.endswith('/'):
-        return url
-    else:
-        return url + '/'
-
-class CouchServer:
+class Server:
 
     def __init__(self, url):
         self.url = ensure_trailing_forward_slash(url)
         self.session = requests.Session()
         self.session.headers['Accept'] = 'application/json'
+        self.cached_dbs = self.get_dbs()
+
+    def __repr__(self):
+        return '<CouchDB Server "{}">'.format(self.url)
+
+    def info(self):
+        r = self.session.get(self.url)
+        return r.json()
+
+    def get_dbs(self):
+        r = self.session.get(self.url + '_all_dbs')
+        return self.dbs
 
     def exists(self, db_name):
-        return self.head_db(db_name)
-
-    def head_db(self, db_name):
         """Check existence of a database.
 
         :param db_name: name of database.
