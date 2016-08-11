@@ -10,7 +10,7 @@ class ServerDict(Server):
         return len(self.dbs)
 
     def __contains__(self, key):
-        return self.exists(key)
+        return self.head_db(key)
 
     def __delitem__(self, key):
         result = self.delete_db(key)
@@ -21,7 +21,7 @@ class ServerDict(Server):
         return iter(self.get_dbs())
 
     def __getitem__(self, key):
-        if key in self.dbs or self.exists(key):
+        if key in self.dbs or self.head_db(key):
             return self.get_db(key)
         else:
             raise KeyError
