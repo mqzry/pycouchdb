@@ -7,7 +7,7 @@ def handle_codes():
         else:
             r.raise_for_status()
 
-def add_forward_slash(url):
+def ensure_trailing_forward_slash(url):
     if url.endswith('/'):
         return url
     else:
@@ -16,12 +16,21 @@ def add_forward_slash(url):
 class CouchServer:
 
     def __init__(self, url):
-        self.url = add_forward_slash(url)
+        self.url = ensure_trailing_forward_slash(url)
         self.session = requests.Session()
         self.session.headers['Accept'] = 'application/json'
 
+    def exists(self, db_name):
+        return self.head_db(db_name)
+
     def head_db(self, db_name):
-        r = self.session.get(self.url + db_name)
+        """Check existence of a database.
+
+        :param db_name: name of database.
+        :return: whether this database exists.
+        :rtype: boolean
+        """
+        r = self.session.head(self.url + db_name)
         return r.status_code == requests.codes.ok
 
     def get_db(self, db_name):
@@ -62,21 +71,34 @@ class CouchServer:
         payload = {'name': user, 'password': password}
         r = self.session.post(self.url + '_session', json=payload)
         if r.status_code == requests.codes.ok:
-            self.user = r.json().name
-            self.user_roles = r.json().roles
+            self.auth.user = r.json().name
+            self.auth.roles = r.json().roles
+            self.auth.method = 'cookie'
             return True
         elif r.status_code == requests.codes.unauthorized:
             logging.info('Failed attempt to login user {0}. Username or password were not recognized.'.format(user))
             return False
 
-
-    def logout():
-        if self.user is None:
+    def logout(self):
+        if self.auth is None:
             return
         else:
-            r = self.session.delete(self.url + '_session', json=payload)
+            r = self.session.delete(self.url + '_session')
             if r.status_code == requests.codes.ok:
-                self.user = None
-                self.user_roles = None
+                self.auth = None
+            elif r.status_code == requests.codes.unauthorized:
+                logging.info('Failed attempt to logout user {0}. User wasn’t authenticated.'.format(self.user))
+
+    def get_user_info(self):
+        if self.auth is None:
+            return
+        else:
+            r = self.session.get(self.url + '_session')
+            if r.status_code == requests.codes.ok:
+                body = r.json()
+                self.auth.user = body.userCtx.name
+                self.auth.roles = body.userCtx.roles
+                self.auth.method = body.info.authenticated
+                self.auth.db = body.info.authentication_db
             elif r.status_code == requests.codes.unauthorized:
                 logging.info('Failed attempt to logout user {0}. User wasn’t authenticated.'.format(self.user))
