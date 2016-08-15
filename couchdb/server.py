@@ -1,6 +1,7 @@
 from based_session import BasedSession
 import logging
 from request import codes
+from database import Database
 
 # TODO: Documentation
 # TODO: Move response logging to separate functions
@@ -10,63 +11,56 @@ class Server:
     def __init__(self, url):
         self.session = BasedSession(url)
         self.session.headers['Accept'] = 'application/json'
-        self.cached_dbs = self.get_dbs()
+        self.refresh_cached_dbs()
 
     def __repr__(self):
         return '<CouchDB Server at "{}">'.format(self.session.prefix_url)
 
+#  Emulating a container
+    def __len__(self):
+        return len(self.get_dbs())
+
+    def __length_hint__(self):
+        return len(self.cached_dbs)
+
+    def __contains__(self, key):
+        db = Database(key, self)
+        return db.exists()
+
+    def __delitem__(self, key):
+        db = Database(key, self)
+        result = db.delete()
+        if result:
+            self.refresh_cached_dbs()
+        else:
+            raise Exception('Deletion failed. Check the logs.')
+
+    def __iter__(self):
+        return iter(self.get_dbs())
+
+    def __getitem__(self, key):
+        db = Database(key, self)
+        if db.exists():
+            return db
+        else:
+            raise KeyError
+
+# All API functions
     def info(self):
         r = self.session.get(self.url)
         return r.json()
 
     def get_dbs(self):
         r = self.session.get('_all_dbs')
-        return self.dbs
+        dbs = [Database(name, self) for name in r.json()]
+        return dbs
 
-    def head_db(self, db_name):
-        """Check existence of a database.
-
-        :param db_name: name of database.
-        :return: whether this database exists.
-        :rtype: boolean
-        """
-        r = self.session.head(db_name)
-        return r.status_code == codes.ok
-
-    def get_db(self, db_name):
-        r = self.session.get(db_name)
-        if r.status_code == codes.ok:
-            # TODO: Return Database object
-            return r.json()
-        else:
-            return None
-
-    def create_db(self, db_name):
-        r = self.session.put(db_name)
-        if r.status_code == codes.created:
-            # TODO: Return Database object
-            return True
-        else:
-            info = r.json()
-            logging.info('Tried to create {0} but {1} happend because {2}'
-                         .format(db_name, info.error, info.reason))
-
-    def delete_db(self, db_name):
-        r = self.session.delete(db_name)
-        if r.status_code == codes.ok:
-            return True
-        elif r.status_code == codes.bad_request:
-            logging.info('Failed attempt to delete database {0}. The request url {1} is not valid.'.format(db_name, r.url)
-                         + 'Probably a invalid database name or forgotten document id by accident.')
-        elif r.status_code == codes.not_found:
-            logging.info('Failed attempt to delete database {0}. It does not exist.'.format(db_name))
-        elif r.status_code == codes.unauthorized:
-            logging.info('Failed attempt to delete database {0}. CouchDB Server Administrator privileges required.'.format(db_name))
-        return False
+    def refresh_cached_dbs(self):
+        self.cached_dbs = self.get_dbs()
 
     def login(self, user, password):
         ''' Login to the server. Save the cookie token in the session.
-        The redirect parameter called next is not supported.'''
+        The redirect parameter \'next\' is not supported.'''
 
         payload = {'name': user, 'password': password}
         r = self.session.post('_session', json=payload)
@@ -140,7 +134,7 @@ class Server:
             logging.info('Failed attempt to retrieve the list of database events of server at {0}.'.format(self.session.prefix_url)
                          + 'CouchDB Server Administrator privileges required.')
 
-    def restart(self):
+    def get_restart(self):
         r = self.session.get('_restart') # headers={'content-type': 'application/json'}
 
         if r.status_code == codes.accepted:
@@ -154,7 +148,10 @@ class Server:
 
         return r.json().ok
 
-    def stats(self, section=None, stat_id=None):
+    def restart(self):
+        self.get_restart()
+
+    def get_stats(self, section=None, stat_id=None):
         resource = '_stats'
         if section is not None:
             resource += '/' + section
@@ -165,7 +162,9 @@ class Server:
         logging.info('Requesting statistics from server {0}.'.format(self.session.prefix_url))
         return r.json()
 
-    def uuids(self, amount=None):
+    def stats(self):
+        return self.get_stats()
+    def get_uuids(self, amount=None):
         r = self.session.get('_uuids', params={'number': amount})
         logging.info('Requesting {1} UUIDs from server {0}.'.format(self.session.prefix_url, amount))
         if r.status_code == codes.ok:
@@ -175,21 +174,8 @@ class Server:
 
         return r.json().uuids
 
-    def post_replication(self, source, target, continuous=None, cancel=None,
+    def post_replicate(self, source, target, continuous=None, cancel=None,
                          create_target=None, doc_ids=None, proxy=None):
-        payload = {}
-        payload['source'] = source
-        payload['target'] = target
-        if continuous is not None:
-            payload['continuous'] = continuous
-        if cancel is not None:
-            payload['cancel'] = cancel
-        if create_target is not None:
-            payload['create_target'] = create_target
-        if doc_ids is not None:
-            payload['doc_ids'] = doc_ids
-        if proxy is not None:
-            payload['proxy'] = proxy
             
         r = self.session.post('_replicate', json=payload)
 
