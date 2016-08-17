@@ -1,11 +1,14 @@
+from requests import codes
+
 class Document:
     """A document in a CouchDB instance."""
-    def __init__(self, database, doc_id, doc_rev=None):
-        super(Document, self).__init__()
+    def __init__(self, database, doc_id, doc_rev):
         self._id = doc_id
+        self.db = database
+        self.db.session.add_part_to_prefix(doc_id)
+        self._rev = doc_rev
         
-    def head_doc(self, docid,
-             docrev=None,
+    def head(self,
              attachments=None,
              att_encoding_info=None,
              atts_since=None,
@@ -37,47 +40,46 @@ class Document:
         :param revs_info: Includes detailed information for all known document revisions.
         :return: The requested doc or None if doc did not get updated.
         """
-        query_params = {}
-        if attachments is not None: 
-            query_params['attachments'] = attachments 
-        if att_encoding_info is not None:
-            query_params['att_encoding_info'] = att_encoding_info 
-        if attachments is not None:
-            query_params['atts_since'] = atts_since 
-        if conflicts is not None:
-            query_params['conflicts'] = conflicts 
-        if deleted_conflicts is not None:
-            query_params['deleted_conflicts'] = deleted_conflicts
-        if latest is not None:
-            query_params['latest'] = latest
-        if local_seq is not None:
-            query_params['local_seq'] = local_seq
-        if meta is not None:
-            query_params['meta'] = meta
-        if open_revs is not None:
-            query_params['open_revs'] = open_revs
-        if rev is not None:
-            query_params['rev'] = rev
-        if revs is not None:
-            query_params['revs'] = revs
-        if revs_info is not None:
-            query_params['revs_info'] = revs_info
+        # print(locals())
+        # query_params = {}
+        # if attachments is not None: 
+        #     query_params['attachments'] = attachments 
+        # if att_encoding_info is not None:
+        #     query_params['att_encoding_info'] = att_encoding_info 
+        # if attachments is not None:
+        #     query_params['atts_since'] = atts_since 
+        # if conflicts is not None:
+        #     query_params['conflicts'] = conflicts 
+        # if deleted_conflicts is not None:
+        #     query_params['deleted_conflicts'] = deleted_conflicts
+        # if latest is not None:
+        #     query_params['latest'] = latest
+        # if local_seq is not None:
+        #     query_params['local_seq'] = local_seq
+        # if meta is not None:
+        #     query_params['meta'] = meta
+        # if open_revs is not None:
+        #     query_params['open_revs'] = open_revs
+        # if rev is not None:
+        #     query_params['rev'] = rev
+        # if revs is not None:
+        #     query_params['revs'] = revs
+        # if revs_info is not None:
+        #     query_params['revs_info'] = revs_info
 
-        req_headers = {}
-        if docrev is not None:
-            req_headers['If-None-Match'] = '"{}"'.format(docrev)
+        # req_headers = {'If-None-Matched': self._rev}
 
-        response = self.server.session.server.head(self.db_url + docid,
-                                     params=query_params,
-                                     headers=req_headers)
-        handle_codes(response)
+        # r = self.db.session.head(params=query_params)
+        # if r.status_code == codes.ok:
+        # elif r.status_code == codes.not_modified:
+        # elif r.status_code == codes.unauthorized:
+        # elif r.status_code == codes.not_found:
 
-        content_length = int(response.headers['Content-Length'])
-        return {'_rev': response.headers['ETag'],
-                'Content-Length': content_length}
+        # content_length = int(response.headers['Content-Length'])
+        # return {'latest_rev': response.headers['ETag'],
+        #         'content-length': content_length}
 
-    def get_doc(self, docid,
-            docrev=None,
+    def get(self,
             attachments=None,
             att_encoding_info=None,
             atts_since=None,
@@ -136,66 +138,65 @@ class Document:
         if revs_info is not None:
             query_params['revs_info'] = revs_info
 
-        req_headers = {}
-        if docrev is not None:
-            req_headers['If-None-Match'] = '"{}"'.format(docrev)
+        req_headers = {'If-None-Matched': self._rev}
+        r = self.db.session.get(params=query_params, headers=req_headers)
+        
+        # if r.status_code == codes.ok:
+        #     #log
+        # elif r.status_code == codes.not_modified:
+        #     #log
+        # elif r.status_code == codes.unauthorized:
+        #     #log
+        # elif r.status_code == codes.not_found:
+        #     #log
+        return r.json()
 
-        response = self.server.session.get(self.db_url + docid,
-                                    params=query_params,
-                                    headers=req_headers)
-        handle_codes(response)
-        return response.json()
+    def put(self, doc, full_commit=None):
+        req_headers = {'If-Match': self._rev}
+        if full_commit is not None:
+            req_headers['X-Couch-Full-Commit'] = full_commit
 
-    def put_doc(self, doc):
-        result = requests.post(self.db_url + str(doc['_id']), json=doc,
-                               auth=(self.user, self.password))
-        return result.json()
+        r = self.db.session.post(json=doc, headers=req_headers)
+        # Handle response
+        body = r.json()
+        
+        return Document(self.db, body.id, body.rev)
 
-    def query(self, method, params=None):
-        response = requests.get(self.db_url + method, params=params,
-                                auth=(self.user, self.password))
-        return response.url
+    def delete(self):
+        if self._rev is None:
+            raise Exception('Attempt to delete document with _id {0} failed.'.format(self._id)
+                            + 'No revision supplied.')
 
-    def put_bulk(self, docs):
-        response = requests.post(self.db_url + '_bulk_docs',
-                                 json={'docs': docs},
-                                 auth=(self.user, self.password))
-        return response.json()
+        req_headers = {'If-Match': self._rev}
+        r = self.db.session.delete(headers=req_headers)
 
-    def get_bulk(self, ids):
-        str_ids = [str for id in ids]
-        response = requests.post(self.db_url + '_all_docs',
-                                 json={'keys': str_ids},
-                                 auth=(self.user, self.password))
-        return response.json()
+        # if r.status_code == codes.ok:
 
-    # def get_all:
-    #     return self.query('_all_docs')
+        # elif r.status_code == codes.accepted:
+        #     #log
+        # elif r.status_code == codes.not_modified:
+        #     #log
+        # elif r.status_code == codes.unauthorized:
+        #     #log
+        # elif r.status_code == codes.not_found:
+        #     #log
+        # elif r.status_code == codes.conflict:
+        #     #log
+        return r.json().ok
 
-    # def add_attachment(doc, attachment_path, name=None, content_type=None):
-    #     if attachment_path:
-    #         if not name:
-    #             name = os.path.basename
-    #         if not content_type:
-    #             content_type = mimetypes.guess_type[0]
-    #         with open(attachment_path, 'rb') as f:
-    #             doc['_attachments'] = {}
-    #             doc['_attachments'][name] = {
-    #                 'content_type': content_type,
-    #                 'data': b64encode(f.read()).decode('utf-8')
-    #             }
-    #     return doc
+    def copy(self, new_id):
+        if self._rev is None:
+            raise Exception('Attempt to copy document with _id {0} failed.'.format(self._id)
+                            + 'No revision supplied.')
 
-    # def replicate(self, source, target, params={}):
-    #     doc = params
-    #     doc['source'] = 'https://{0}:{1}@'.format(self.user, self.password) \
-    #                     + self.base_url.split('//')[1] + source
-    #     doc['target'] = 'https://{0}:{1}@'.format(self.user, self.password) \
-    #                     + self.base_url.split('//')[1] + target
-    #     self.set_current_db('_replicator')
-    #     return self.create
+        req_headers = {'If-Match': self._rev, 'Destination': new_id}
+        r = self.db.session.copy(headers=req_headers)
 
-    # def get_view(self, design_doc, view_name):
-    #     response = requests.get(self.db_url + "_design/{0}/_view/{1}".format(design_doc, view_name),
-    #                             auth=(self.user, self.password))
-    #     return response
+    def head_attachment(self):
+    def get_attachment(self):
+    def put_attachment(self):
+    def post_attachment(self):
+    def delete_attachment(self):
+
+    def __main__():
+        Document(1,'a').head()

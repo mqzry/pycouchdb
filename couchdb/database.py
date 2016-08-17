@@ -79,3 +79,22 @@ class Database:
             return False
         elif r.status_code == codes.conflict:
             return False
+
+    def query(self, method, params=None):
+        response = requests.get(self.db_url + method, params=params,
+                                auth=(self.user, self.password))
+        return response.url
+
+    def put_bulk(self, docs):
+        response = requests.post(self.db_url + '_bulk_docs',
+                                 json={'docs': docs},
+                                 auth=(self.user, self.password))
+        return response.json()
+
+    def get_bulk(self, ids):
+        str_ids = [str for id in ids]
+        response = requests.post(self.db_url + '_all_docs',
+                                 json={'keys': str_ids},
+                                 auth=(self.user, self.password))
+        return response.json()
+
