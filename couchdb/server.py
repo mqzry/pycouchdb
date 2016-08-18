@@ -7,14 +7,16 @@ from database import Database
 # TODO: Move response logging to separate functions
 
 class Server:
+'''A class representing a CouchDB instance.'''
 
     def __init__(self, url):
+        self.url = url
         self.session = BasedSession(url)
         self.session.headers['Accept'] = 'application/json'
         self.refresh_cached_dbs()
 
     def __repr__(self):
-        return '<CouchDB Server at "{}">'.format(self.session.prefix_url)
+        return '<CouchDB Server at "{}">'.format(self.url)
 
 #  Emulating a container
     def __len__(self):
@@ -39,13 +41,19 @@ class Server:
         return iter(self.get_dbs())
 
     def __getitem__(self, key):
-        db = Database(key, self)
+        db = Database(self, key)
         if db.exists():
             return db
         else:
             raise KeyError
 
-# All API functions
+    def create(self, db_name): # TODO: Decide best way to handle unauth errors
+        db = Database(self, db_name)
+        result = db.put()
+        return db, result
+
+# API functions
+    @property
     def info(self):
         r = self.session.get(self.url)
         return r.json()
@@ -98,7 +106,7 @@ class Server:
                 logging.info('Failed attempt to logout user {0}.'.format(self.user),
                              'User wasn’t authenticated.')
 
-    def read_log(self, bytes, offset):
+    def get_log(self, bytes, offset):
         r = self.session.get('_log',headers={'Accept': 'text/plain'})
         if r.status_code == codes.ok:
             return r.text
@@ -106,6 +114,10 @@ class Server:
             logging.info('Failed attempt read the log of server at {0}.'.format(self.session.prefix_url)
                          + 'CouchDB Server Administrator privileges required.')
 
+    @property
+    def log(self):
+        return self.get_log()
+    
     def get_active_tasks(self):
         r = self.session.get('_active_tasks')
         if r.status_code == codes.ok:
@@ -120,14 +132,19 @@ class Server:
 
     def get_db_updates(self, feed, timeout=None, heartbeat=None):
         payload = {}
-        payload['feed'] = feed
+        allowed_feed_values = ['longpoll', 'continuous', 'eventsource']
+        if feed in allowed_feed_values:
+            payload['feed'] = feed
+        else: # Find way to format a list into a string
+            raise ValueError('Unsupported value for \'feed\'.'
+                             + 'Possible values: {}, {}, {}'.format(allowed_feed_values))
         if timeout is not None:
             payload['timeout'] = timeout
         if heartbeat is not None:
             payload['heartbeat'] = heartbeat
 
         r = self.session.get('_membership', json=payload)
-
+        # TODO: Handle continuous connection
         if r.status_code == codes.ok:
             return r.json()
         elif r.status_code == codes.unauthorized:
@@ -139,14 +156,15 @@ class Server:
 
         if r.status_code == codes.accepted:
             logging.info('Restart request for server {0} accepted.'.format(self.session.prefix_url))
+            return True, r.json().ok
         elif r.status_code == codes.unsupported_media_type:
             logging.info('Restart request has incorrect content-type.'
                          + 'The following headers were sent {0}'.format(r.request.headers))
+            return False, None
         elif r.status_code == codes.unauthorized:
             logging.info('Restart request rejected for server at {0}.'.format(self.session.prefix_url)
                          + 'CouchDB Server Administrator privileges required.')
-
-        return r.json().ok
+            return False, None
 
     def restart(self):
         self.get_restart()
@@ -162,8 +180,10 @@ class Server:
         logging.info('Requesting statistics from server {0}.'.format(self.session.prefix_url))
         return r.json()
 
+    @property
     def stats(self):
         return self.get_stats()
+
     def get_uuids(self, amount=None):
         r = self.session.get('_uuids', params={'number': amount})
         logging.info('Requesting {1} UUIDs from server {0}.'.format(self.session.prefix_url, amount))
@@ -202,16 +222,16 @@ class Server:
         r = self.session.request(resource)
         if r.status_code == codes.ok:
             logging.info('Config request successful.')
+            return r.json()
         elif r.status_code == codes.unauthorized:
             logging.info('Current user {0} is unauthorized to view configuration.'.format(self.auth.user)
                          + 'CouchDB Server Administrator privileges required.')
-
-        return r.json()
 
     def put_config(self, section, key, value):
         r = self.session.put('_config/{0}/{1}'.format(section, key), json=value)
         if r.status_code == codes.ok:
             logging.info('Request completed successfully')
+            return r.json()
         elif r.status_code == codes.bad_request:
             logging.info('Invalid JSON request body'
                          + 'The body: {0}'.format(r.request.body))
@@ -221,16 +241,14 @@ class Server:
         elif r.status_code == codes.internal_server_error:
             logging.info('Error setting configuration {0}/{1}.'.format(section, key))
 
-        return r.json()
-
     def delete_config(self, section, key):
         r = self.session.put('_config/{0}/{1}'.format(section, key))
         if r.status_code == codes.ok:
             logging.info('Request completed successfully.')
+            return r.json()
         elif r.status_code == codes.not_found:
             logging.info('Configuration {0}/{1} not found.'.format(section, key))
         elif r.status_code == codes.unauthorized:
             logging.info('Current user {0} is unauthorized to change configuration.'.format(self.auth.user)
                          + 'CouchDB Server Administrator privileges required.')
 
-        return r.json()

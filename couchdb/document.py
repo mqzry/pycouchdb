@@ -40,44 +40,48 @@ class Document:
         :param revs_info: Includes detailed information for all known document revisions.
         :return: The requested doc or None if doc did not get updated.
         """
-        # print(locals())
-        # query_params = {}
-        # if attachments is not None: 
-        #     query_params['attachments'] = attachments 
-        # if att_encoding_info is not None:
-        #     query_params['att_encoding_info'] = att_encoding_info 
-        # if attachments is not None:
-        #     query_params['atts_since'] = atts_since 
-        # if conflicts is not None:
-        #     query_params['conflicts'] = conflicts 
-        # if deleted_conflicts is not None:
-        #     query_params['deleted_conflicts'] = deleted_conflicts
-        # if latest is not None:
-        #     query_params['latest'] = latest
-        # if local_seq is not None:
-        #     query_params['local_seq'] = local_seq
-        # if meta is not None:
-        #     query_params['meta'] = meta
-        # if open_revs is not None:
-        #     query_params['open_revs'] = open_revs
-        # if rev is not None:
-        #     query_params['rev'] = rev
-        # if revs is not None:
-        #     query_params['revs'] = revs
-        # if revs_info is not None:
-        #     query_params['revs_info'] = revs_info
 
-        # req_headers = {'If-None-Matched': self._rev}
+        query_params = {}
+        if attachments is not None: 
+            query_params['attachments'] = attachments 
+        if att_encoding_info is not None:
+            query_params['att_encoding_info'] = att_encoding_info 
+        if attachments is not None:
+            query_params['atts_since'] = atts_since 
+        if conflicts is not None:
+            query_params['conflicts'] = conflicts 
+        if deleted_conflicts is not None:
+            query_params['deleted_conflicts'] = deleted_conflicts
+        if latest is not None:
+            query_params['latest'] = latest
+        if local_seq is not None:
+            query_params['local_seq'] = local_seq
+        if meta is not None:
+            query_params['meta'] = meta
+        if open_revs is not None:
+            query_params['open_revs'] = open_revs
+        if rev is not None:
+            query_params['rev'] = rev
+        if revs is not None:
+            query_params['revs'] = revs
+        if revs_info is not None:
+            query_params['revs_info'] = revs_info
 
-        # r = self.db.session.head(params=query_params)
-        # if r.status_code == codes.ok:
-        # elif r.status_code == codes.not_modified:
-        # elif r.status_code == codes.unauthorized:
-        # elif r.status_code == codes.not_found:
+        req_headers = {'If-None-Matched': self._rev}
 
-        # content_length = int(response.headers['Content-Length'])
-        # return {'latest_rev': response.headers['ETag'],
-        #         'content-length': content_length}
+        r = self.db.session.head(params=query_params)
+        if r.status_code == codes.ok:
+            logging.info('Document {0} exists'.format(self._id))
+            content_length = int(response.headers['Content-Length'])
+            return {'latest_rev': response.headers['ETag'],
+                    'content-length': content_length}
+        elif r.status_code == codes.not_modified:
+            logging.info('Document {0} wasn’t modified since specified revision'.format(self._id)).
+            return
+        elif r.status_code == codes.unauthorized:
+            logging.info('Failed attempt to head document {0}. Read privilege required.'.format(self._id))
+        elif r.status_code == codes.not_found:
+            logging.info('Document {0} not found'.format(self._id))
 
     def get(self,
             attachments=None,
@@ -141,15 +145,22 @@ class Document:
         req_headers = {'If-None-Matched': self._rev}
         r = self.db.session.get(params=query_params, headers=req_headers)
         
-        # if r.status_code == codes.ok:
-        #     #log
-        # elif r.status_code == codes.not_modified:
-        #     #log
-        # elif r.status_code == codes.unauthorized:
-        #     #log
-        # elif r.status_code == codes.not_found:
-        #     #log
-        return r.json()
+        if r.status_code == codes.ok:
+            return r.json()
+        elif r.status_code == codes.not_modified:
+            logging.info('Document {0} wasn’t modified since specified revision'.format(self._id))
+            return
+        elif r.status_code == codes.bad_request:
+            logging.info('The format of the request or revision {0} is invalid.'.format(self._rev) 
+                         + 'Request: {0}'.format(r.request))
+            return
+        elif r.status_code == codes.unauthorized:
+            logging.info('Failed attempt to head document {0}. Read privilege required.'.format(self._id))
+            return
+        elif r.status_code == codes.not_found:
+            logging.info('Document {0} not found'.format(self._id))
+            return
+ 
 
     def put(self, doc, full_commit=None):
         req_headers = {'If-Match': self._rev}
@@ -157,17 +168,18 @@ class Document:
             req_headers['X-Couch-Full-Commit'] = full_commit
 
         r = self.db.session.post(json=doc, headers=req_headers)
-        # Handle response
+
         body = r.json()
         
         return Document(self.db, body.id, body.rev)
 
-    def delete(self):
-        if self._rev is None:
-            raise Exception('Attempt to delete document with _id {0} failed.'.format(self._id)
-                            + 'No revision supplied.')
+    def delete(self, full_commit=None):
+        req_headers = {'If-Match': self._rev}
 
         req_headers = {'If-Match': self._rev}
+        if full_commit is not None:
+            req_headers['X-Couch-Full-Commit'] = full_commit
+
         r = self.db.session.delete(headers=req_headers)
 
         # if r.status_code == codes.ok:
@@ -185,10 +197,6 @@ class Document:
         return r.json().ok
 
     def copy(self, new_id):
-        if self._rev is None:
-            raise Exception('Attempt to copy document with _id {0} failed.'.format(self._id)
-                            + 'No revision supplied.')
-
         req_headers = {'If-Match': self._rev, 'Destination': new_id}
         r = self.db.session.copy(headers=req_headers)
 
@@ -197,6 +205,3 @@ class Document:
     def put_attachment(self):
     def post_attachment(self):
     def delete_attachment(self):
-
-    def __main__():
-        Document(1,'a').head()

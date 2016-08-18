@@ -8,7 +8,7 @@ def handle_codes():
 
 class Database:
 
-    def __init__(self, name, server):
+    def __init__(self, server, name):
         self.name = url
         self.server = server
         self.session = server.session
@@ -42,6 +42,7 @@ class Database:
             info = r.json()
             logging.info('Tried to create {0} but {1} happend because {2}'
                          .format(db_name, info.error, info.reason))
+            return False
 
     def delete(self):
         r = self.session.delete(db_name)
