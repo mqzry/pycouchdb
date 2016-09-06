@@ -10,7 +10,7 @@ class ServerTestSuite(unittest.TestCase):
     """Basic test cases."""
 
     def test_info(self):
-        assert server.info.uuid
+        assert server.info['uuid']
 
     def test_active_tasks(self):
         tasks = server.get_active_tasks()
@@ -18,7 +18,7 @@ class ServerTestSuite(unittest.TestCase):
 
     def test_all_dbs(self):
         dbs = server.get_dbs()
-        assert dbs is list  # TODO: look for way to check if variable is a list
+        assert dbs[0].name is not None # TODO: look for way to check if variable is a list
 
     def test_db_updates_longpoll(self):
         db_updates = server.get_db_updates('longpoll')
@@ -49,7 +49,7 @@ class ServerTestSuite(unittest.TestCase):
         assert server.stats() is not None
 
     def test_uuids(self):
-        assert len(server.uuids(1).uuids) == 1
+        assert len(server.uuids(1)['uuids']) == 1
 
     def test_login(self):
         raise NotImplementedError

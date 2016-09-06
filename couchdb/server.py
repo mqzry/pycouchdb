@@ -1,17 +1,25 @@
-from based_session import BasedSession
+from .based_session import BasedSession
 import logging
-from request import codes
-from database import Database
+from requests import codes
+from .database import Database
 
 # TODO: Documentation
 # TODO: Move response logging to separate functions
 
+class Auth:
+    def __init__(self, user=None, roles=None, method=None, db=None):
+        self.user = user
+        self.roles = roles
+        self.method = method
+        self.db = db
+
 class Server:
-'''A class representing a CouchDB instance.'''
+    '''A class representing a CouchDB instance.'''
 
     def __init__(self, url):
         self.url = url
         self.session = BasedSession(url)
+        self.auth = Auth()
         self.session.headers['Accept'] = 'application/json'
         self.refresh_cached_dbs()
 
@@ -26,11 +34,11 @@ class Server:
         return len(self.cached_dbs)
 
     def __contains__(self, key):
-        db = Database(key, self)
+        db = Database(self, key)
         return db.exists()
 
     def __delitem__(self, key):
-        db = Database(key, self)
+        db = Database(self, key)
         result = db.delete()
         if result:
             self.refresh_cached_dbs()
@@ -56,11 +64,13 @@ class Server:
     @property
     def info(self):
         r = self.session.get(self.url)
+        logging.info(r.json())
         return r.json()
 
     def get_dbs(self):
         r = self.session.get('_all_dbs')
-        dbs = [Database(name, self) for name in r.json()]
+        dbs = [Database(self, name) for name in r.json()]
+        logging.info(dbs[0].get())
         return dbs
 
     def refresh_cached_dbs(self):
@@ -72,13 +82,15 @@ class Server:
 
         payload = {'name': user, 'password': password}
         r = self.session.post('_session', json=payload)
+        json = r.json()
         if r.status_code == codes.ok:
-            self.auth.user = r.json().name
-            self.auth.roles = r.json().roles
+            self.auth.user = json['name']
+            self.auth.roles = json['roles']
             self.auth.method = 'cookie'
             return True
         elif r.status_code == codes.unauthorized:
-            logging.info('Failed attempt to login user {0}. Username or password were not recognized.'.format(user))
+            logging.info('Failed attempt to login user {0}.'.format(user)
+                         + 'Username or password were not recognized.')
             return False
 
     def logout(self):
@@ -89,7 +101,8 @@ class Server:
             if r.status_code == codes.ok:
                 self.auth = None
             elif r.status_code == codes.unauthorized:
-                logging.info('Failed attempt to logout user {0}. User wasn’t authenticated.'.format(self.user))
+                logging.info('Failed attempt to logout user {0}'.format(self.user)
+                             + 'User wasn’t authenticated.')
 
     def get_user_info(self):
         if self.auth is None:
@@ -98,10 +111,10 @@ class Server:
             r = self.session.get('_session')
             if r.status_code == codes.ok:
                 body = r.json()
-                self.auth.user = body.userCtx.name
-                self.auth.roles = body.userCtx.roles
-                self.auth.method = body.info.authenticated
-                self.auth.db = body.info.authentication_db
+                self.auth.user = body['userCtx']['name']
+                self.auth.roles = body['userCtx']['roles']
+                self.auth.method = body['info']['authenticated']
+                self.auth.db = body['info']['authentication_db']
             elif r.status_code == codes.unauthorized:
                 logging.info('Failed attempt to logout user {0}.'.format(self.user),
                              'User wasn’t authenticated.')
@@ -156,7 +169,7 @@ class Server:
 
         if r.status_code == codes.accepted:
             logging.info('Restart request for server {0} accepted.'.format(self.session.prefix_url))
-            return True, r.json().ok
+            return True, r.json()['ok']
         elif r.status_code == codes.unsupported_media_type:
             logging.info('Restart request has incorrect content-type.'
                          + 'The following headers were sent {0}'.format(r.request.headers))
@@ -184,7 +197,11 @@ class Server:
     def stats(self):
         return self.get_stats()
 
-    def get_uuids(self, amount=None):
+    @property
+    def uuids(self):
+        return self.get_uuids()
+
+    def get_uuids(self, amount=1):
         r = self.session.get('_uuids', params={'number': amount})
         logging.info('Requesting {1} UUIDs from server {0}.'.format(self.session.prefix_url, amount))
         if r.status_code == codes.ok:
@@ -192,16 +209,17 @@ class Server:
         elif r.status_code == codes.forbidden:
             logging.info('Requested more UUIDs than is allowed to retrieve.')
 
-        return r.json().uuids
+        return r.json()['uuids']
 
     def post_replicate(self, source, target, continuous=None, cancel=None,
                          create_target=None, doc_ids=None, proxy=None):
-            
-        r = self.session.post('_replicate', json=payload)
+        #TODO: fill payload
+
+        r = self.session.post('_replicate')
 
         if (r.status_code == codes.ok 
             or r.status_code == codes.accepted):
-            return r.json();
+            return r.json()
         if r.status_code == codes.bad_request:
             logging.info('The body of request is invalid JSON.'
                          + 'The body: {0}'.format(r.request.body))

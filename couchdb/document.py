@@ -76,7 +76,7 @@ class Document:
             return {'latest_rev': response.headers['ETag'],
                     'content-length': content_length}
         elif r.status_code == codes.not_modified:
-            logging.info('Document {0} wasn’t modified since specified revision'.format(self._id)).
+            logging.info('Document {0} wasn’t modified since specified revision'.format(self._id))
             return
         elif r.status_code == codes.unauthorized:
             logging.info('Failed attempt to head document {0}. Read privilege required.'.format(self._id))
@@ -200,8 +200,8 @@ class Document:
         req_headers = {'If-Match': self._rev, 'Destination': new_id}
         r = self.db.session.copy(headers=req_headers)
 
-    def head_attachment(self):
-    def get_attachment(self):
-    def put_attachment(self):
-    def post_attachment(self):
-    def delete_attachment(self):
+    # def head_attachment(self):
+    # def get_attachment(self):
+    # def put_attachment(self):
+    # def post_attachment(self):
+    # def delete_attachment(self):

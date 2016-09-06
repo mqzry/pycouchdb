@@ -1,15 +1,11 @@
-from document import Document
-
-def handle_codes():
-        if response.status_code == requests.codes.not_modified:
-            return None
-        else:
-            response.raise_for_status()
+from .document import Document
+from requests import codes
+import logging
 
 class Database:
 
     def __init__(self, server, name):
-        self.name = url
+        self.name = name
         self.server = server
         self.session = server.session
         self.session.add_part_to_prefix(name)
@@ -20,7 +16,7 @@ class Database:
     def head(self):
         """Check existence of a database.
 
-        :param db_name: name of database.
+        :param self.name: name of database.
         :return: whether this database exists.
         :rtype: boolean
         """
@@ -41,20 +37,20 @@ class Database:
         else:
             info = r.json()
             logging.info('Tried to create {0} but {1} happend because {2}'
-                         .format(db_name, info.error, info.reason))
+                         .format(self.name, info['error'], info['reason']))
             return False
 
     def delete(self):
-        r = self.session.delete(db_name)
+        r = self.session.delete(self.name)
         if r.status_code == codes.ok:
             return True
         elif r.status_code == codes.bad_request:
-            logging.info('Failed attempt to delete database {0}. The request url {1} is not valid.'.format(db_name, r.url)
+            logging.info('Failed attempt to delete database {0}. The request url {1} is not valid.'.format(self.name, r.url)
                          + 'Probably a invalid database name or forgotten document id by accident.')
         elif r.status_code == codes.not_found:
-            logging.info('Failed attempt to delete database {0}. It does not exist.'.format(db_name))
+            logging.info('Failed attempt to delete database {0}. It does not exist.'.format(self.name))
         elif r.status_code == codes.unauthorized:
-            logging.info('Failed attempt to delete database {0}. CouchDB Server Administrator privileges required.'.format(db_name))
+            logging.info('Failed attempt to delete database {0}. CouchDB Server Administrator privileges required.'.format(self.name))
         return False
 
     def post(self, doc, full_commit=None, batch=None):
@@ -69,9 +65,9 @@ class Database:
         r = self.session.post(json=doc, params=query_params, headers=request_headers)
         body = r.json()
         if r.status_code == codes.ok:
-            return Document(self, body.id, body.rev)
+            return Document(self, body['id'], body['rev'])
         elif r.status_code == codes.created:
-            return Document(self, body.id, body.rev)
+            return Document(self, body['id'], body['rev'])
         elif r.status_code == codes.bad_request:
             return False
         elif r.status_code == codes.unauthorized:
@@ -82,19 +78,19 @@ class Database:
             return False
 
     def query(self, method, params=None):
-        response = requests.get(self.db_url + method, params=params,
+        response = self.session.get(self.db_url + method, params=params,
                                 auth=(self.user, self.password))
         return response.url
 
     def put_bulk(self, docs):
-        response = requests.post(self.db_url + '_bulk_docs',
+        response = self.session.post(self.db_url + '_bulk_docs',
                                  json={'docs': docs},
                                  auth=(self.user, self.password))
         return response.json()
 
     def get_bulk(self, ids):
         str_ids = [str for id in ids]
-        response = requests.post(self.db_url + '_all_docs',
+        response = self.session.post(self.db_url + '_all_docs',
                                  json={'keys': str_ids},
                                  auth=(self.user, self.password))
         return response.json()
